@@ -1,0 +1,42 @@
+{
+  "title": "Effect of Clinical Pharmacist Interventions on Blood Pressure Control",
+  "journal": "American Journal of Health-System Pharmacy",
+  "doi": "10.1093/ajhp/zxab123",
+  "publication_date": "2021-08-15",
+  "authors": [
+    "Taylor M. Smith",
+    "Rebecca L. Johnson",
+    "Jamal K. Patel",
+    "Emily Chen"
+  ],
+  "abstract": "Background: Hypertension control remains suboptimal in many outpatient settings. Objective: To evaluate the impact of clinical pharmacist-led medication management on blood pressure control among adults with persistent hypertension. Methods: We conducted a prospective, randomized controlled trial across three ambulatory clinics. Adult patients with uncontrolled hypertension despite at least two antihypertensive agents were randomized to receive either pharmacist-managed care with collaborative practice agreements or usual physician-led care. Interventions included comprehensive medication review, adherence assessment, titration authority, and patient education. The primary outcome was the proportion of patients achieving target blood pressure at 6 months. Secondary outcomes included mean systolic and diastolic blood pressure change, medication adherence scores, adverse drug events, and patient satisfaction. Results: A greater proportion of patients in the pharmacist-managed arm achieved target blood pressure compared with usual care (68% vs 45%, p=0.01). Mean systolic blood pressure decreased by 18 mmHg in the intervention group versus 10 mmHg in control (p=0.02). Adverse events were similar between groups, with no serious events attributed to pharmacist interventions. Statistical analysis used intention-to-treat principles with multiple imputation for missing data. Conclusion: Clinical pharmacist-led medication management significantly improved blood pressure control without compromising safety, supporting broader implementation of collaborative practice models.",
+  "url": "https://doi.org/10.1093/ajhp/zxab123",
+  "keywords": [
+    "Hypertension",
+    "Clinical pharmacy",
+    "Collaborative practice",
+    "Medication therapy management"
+  ],
+  "volume": "78",
+  "issue": "16",
+  "pages": "1421-1429",
+  "article_type": "journal-article",
+  "publisher": "Oxford University Press",
+  "subjects": [
+    "Pharmacology",
+    "Cardiology"
+  ],
+  "mesh_terms": [
+    "Hypertension",
+    "Medication Therapy Management",
+    "Pharmacists"
+  ],
+  "clinical_trial_identifiers": [
+    "NCT01234567"
+  ],
+  "references": [
+    "Whelton PK et al. 2017 ACC/AHA hypertension guideline.",
+    "Carter BL. Team-based care and blood pressure control.",
+    "Baxter KA. Outcomes of pharmacist-managed hypertension clinics."
+  ]
+}
