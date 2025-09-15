@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from typing import Any, Dict, List, Optional
+from xml.etree import ElementTree as ET
 
 import requests
 
@@ -36,6 +37,9 @@ class ArticleMetadata:
     publisher: Optional[str] = None
     subjects: List[str] = field(default_factory=list)
     references: List[str] = field(default_factory=list)
+    abstract_sections: Dict[str, str] = field(default_factory=dict)
+    mesh_terms: List[str] = field(default_factory=list)
+    clinical_trial_identifiers: List[str] = field(default_factory=list)
 
     @property
     def citation_text(self) -> str:
@@ -83,7 +87,9 @@ class CrossrefClient:
         response = self.session.get(url, timeout=self.timeout)
         response.raise_for_status()
         payload = response.json()
-        return self._parse_message(payload["message"])
+        metadata = self._parse_message(payload["message"])
+        enrich_metadata_with_pubmed(metadata, doi=doi)
+        return metadata
 
     def fetch_by_title(self, title: str) -> ArticleMetadata:
         """Retrieve metadata for the best matching title."""
@@ -101,7 +107,9 @@ class CrossrefClient:
             raise LookupError(f"No Crossref records found for title '{title}'.")
         # Return the most complete record by preferring items with abstracts.
         items.sort(key=lambda item: (1 if item.get("abstract") else 0, item.get("score", 0)), reverse=True)
-        return self._parse_message(items[0])
+        metadata = self._parse_message(items[0])
+        enrich_metadata_with_pubmed(metadata, title=title)
+        return metadata
 
     def _parse_message(self, message: Dict[str, Any]) -> ArticleMetadata:
         """Convert a Crossref API message to :class:`ArticleMetadata`."""
@@ -113,6 +121,7 @@ class CrossrefClient:
         doi = message.get("DOI")
         abstract_raw = message.get("abstract")
         abstract = clean_html(abstract_raw) if abstract_raw else None
+        abstract_sections = extract_structured_sections(abstract) if abstract else {}
         authors = []
         for author in message.get("author", []):
             given = author.get("given", "").strip()
@@ -153,6 +162,7 @@ class CrossrefClient:
             publisher=publisher,
             subjects=subjects,
             references=references,
+            abstract_sections=abstract_sections,
         )
 
 
@@ -193,12 +203,38 @@ def clean_html(text: str) -> str:
     return cleaned.strip()
 
 
+def extract_structured_sections(text: str) -> Dict[str, str]:
+    """Split a structured abstract into labeled sections."""
+
+    if not text:
+        return {}
+
+    pattern = re.compile(
+        r"(?P<label>(?:[A-Z][A-Za-z/&\-]+)(?:\s+[A-Za-z][A-Za-z/&\-]+){0,5})\s*:",
+    )
+    sections: Dict[str, str] = {}
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return {}
+    for index, match in enumerate(matches):
+        label = match.group("label").strip()
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        content = text[start:end].strip()
+        if content:
+            sections[label] = content
+    return sections
+
+
 def load_metadata_from_file(path: str) -> ArticleMetadata:
     """Load :class:`ArticleMetadata` from a JSON file."""
 
     with open(path, "r", encoding="utf-8") as handle:
         data = json.load(handle)
-    return ArticleMetadata(**data)
+    metadata = ArticleMetadata(**data)
+    if metadata.abstract and not metadata.abstract_sections:
+        metadata.abstract_sections = extract_structured_sections(metadata.abstract)
+    return metadata
 
 
 def save_metadata_to_file(metadata: ArticleMetadata, path: str) -> None:
@@ -206,3 +242,160 @@ def save_metadata_to_file(metadata: ArticleMetadata, path: str) -> None:
 
     with open(path, "w", encoding="utf-8") as handle:
         json.dump(metadata.__dict__, handle, ensure_ascii=False, indent=2)
+
+
+@dataclass
+class PubMedRecord:
+    """Selected fields extracted from the PubMed XML response."""
+
+    abstract_sections: Dict[str, str]
+    keywords: List[str]
+    mesh_terms: List[str]
+    trial_identifiers: List[str]
+
+
+class PubMedClient:
+    """Client for retrieving structured article details from PubMed."""
+
+    BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+
+    def __init__(self, session: Optional[requests.Session] = None, timeout: int = 10) -> None:
+        self.session = session or requests.Session()
+        self.timeout = timeout
+        self.session.headers.setdefault("User-Agent", USER_AGENT)
+
+    def fetch_article(self, doi: Optional[str] = None, title: Optional[str] = None) -> Optional[PubMedRecord]:
+        """Fetch a PubMed article by DOI or title."""
+
+        pmid = self._resolve_pmid(doi=doi, title=title)
+        if not pmid:
+            return None
+        params = {
+            "db": "pubmed",
+            "id": pmid,
+            "retmode": "xml",
+            "tool": "journal_club_ppt",
+            "email": "pharm-journal-club@example.com",
+        }
+        try:
+            response = self.session.get(
+                f"{self.BASE_URL}/efetch.fcgi",
+                params=params,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:  # pragma: no cover - network required
+            LOGGER.debug("PubMed efetch failed: %s", exc)
+            return None
+
+        return self._parse_article_xml(response.text)
+
+    def _resolve_pmid(self, doi: Optional[str], title: Optional[str]) -> Optional[str]:
+        """Return a PubMed identifier matching the DOI or title."""
+
+        search_terms = []
+        if doi:
+            search_terms.append(f"{doi}[AID]")
+        if title:
+            search_terms.append(f"{title}[Title]")
+        for term in search_terms:
+            params = {
+                "db": "pubmed",
+                "term": term,
+                "retmode": "json",
+                "retmax": 1,
+                "tool": "journal_club_ppt",
+                "email": "pharm-journal-club@example.com",
+            }
+            try:
+                response = self.session.get(
+                    f"{self.BASE_URL}/esearch.fcgi",
+                    params=params,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except (requests.RequestException, ValueError) as exc:  # pragma: no cover - network required
+                LOGGER.debug("PubMed esearch failed for term %s: %s", term, exc)
+                continue
+            ids = payload.get("esearchresult", {}).get("idlist", [])
+            if ids:
+                return ids[0]
+        return None
+
+    def _parse_article_xml(self, xml_text: str) -> Optional[PubMedRecord]:
+        """Parse the relevant fields from the PubMed XML string."""
+
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError as exc:
+            LOGGER.debug("Unable to parse PubMed XML: %s", exc)
+            return None
+
+        article = root.find(".//PubmedArticle")
+        if article is None:
+            return None
+
+        abstract_sections: Dict[str, str] = {}
+        for abstract_text in article.findall(".//Abstract/AbstractText"):
+            label = (
+                abstract_text.attrib.get("Label")
+                or abstract_text.attrib.get("NlmCategory")
+                or "Abstract"
+            )
+            text = "".join(abstract_text.itertext()).strip()
+            if text:
+                abstract_sections[label] = text
+
+        keyword_texts: List[str] = []
+        for keyword_list in article.findall(".//KeywordList"):
+            for keyword in keyword_list.findall("Keyword"):
+                text = "".join(keyword.itertext()).strip()
+                if text:
+                    keyword_texts.append(text)
+
+        mesh_terms: List[str] = []
+        for mesh in article.findall(".//MeshHeading/DescriptorName"):
+            text = "".join(mesh.itertext()).strip()
+            if text:
+                mesh_terms.append(text)
+
+        trial_identifiers: List[str] = []
+        for acc in article.findall(".//ClinicalTrialInformation/AccessionNumber"):
+            text = "".join(acc.itertext()).strip()
+            if text:
+                trial_identifiers.append(text)
+
+        return PubMedRecord(
+            abstract_sections=abstract_sections,
+            keywords=keyword_texts,
+            mesh_terms=mesh_terms,
+            trial_identifiers=trial_identifiers,
+        )
+
+
+def enrich_metadata_with_pubmed(
+    metadata: ArticleMetadata,
+    doi: Optional[str] = None,
+    title: Optional[str] = None,
+) -> None:
+    """Augment Crossref metadata with additional details from PubMed."""
+
+    client = PubMedClient()
+    record = client.fetch_article(doi=doi or metadata.doi, title=title or metadata.title)
+    if not record:
+        return
+
+    if record.abstract_sections:
+        metadata.abstract_sections.update(record.abstract_sections)
+        if not metadata.abstract:
+            metadata.abstract = " ".join(record.abstract_sections.values())
+    if record.keywords:
+        combined = list(dict.fromkeys([*metadata.keywords, *record.keywords]))
+        metadata.keywords = combined
+    if record.mesh_terms:
+        metadata.mesh_terms = list(dict.fromkeys([*metadata.mesh_terms, *record.mesh_terms]))
+    if record.trial_identifiers:
+        metadata.clinical_trial_identifiers = list(
+            dict.fromkeys([*metadata.clinical_trial_identifiers, *record.trial_identifiers])
+        )

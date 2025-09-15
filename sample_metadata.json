@@ -26,6 +26,14 @@
     "Pharmacology",
     "Cardiology"
   ],
+  "mesh_terms": [
+    "Hypertension",
+    "Medication Therapy Management",
+    "Pharmacists"
+  ],
+  "clinical_trial_identifiers": [
+    "NCT01234567"
+  ],
   "references": [
     "Whelton PK et al. 2017 ACC/AHA hypertension guideline.",
     "Carter BL. Team-based care and blood pressure control.",

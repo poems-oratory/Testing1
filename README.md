@@ -8,6 +8,8 @@ The generator pulls bibliographic information from Crossref, builds a comprehens
 
 - Accepts either a DOI, article title keywords, or a saved metadata JSON file.
 - Retrieves article metadata (authors, journal, publication date, abstract, keywords, references) using the Crossref public API.
+- Enriches metadata with PubMed when available to capture structured abstract sections, MeSH terms, and trial identifiers for
+  evidence-based slide content.
 - Automatically builds slides for background, objectives, design, methods, population, interventions, outcomes, efficacy, safety, statistics, clinical relevance, strengths, limitations, conclusion, discussion questions, and references.
 - Produces slide notes and randomized visual accents appropriate for professional presentations.
 - Supports deterministic runs via `--seed`, multiple color schemes via `--style`, and offline reuse of metadata.
@@ -62,5 +64,8 @@ python -m journal_club_ppt.cli --metadata-file remdesivir.json --output remdesiv
 
 ## Notes
 
-- Crossref abstracts sometimes omit detailed results. The generator fills any gaps with pharmacy-focused prompts so the slides remain presentation-ready.
-- Review the generated deck to tailor talking points for your site-specific expectations and add institution-specific recommendations when needed.
+- The planner extracts labeled sentences (Background, Methods, Results, Interpretation, etc.) from structured abstracts so
+  slides highlight the same data a preceptor expects to hear.
+- When abstracts lack specific sections, pharmacy-focused prompts are appended as gentle reminders to add local insight.
+- Review the generated deck to tailor talking points for your site-specific expectations and add institution-specific
+  recommendations when needed.
